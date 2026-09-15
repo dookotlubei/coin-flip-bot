@@ -15,8 +15,8 @@ TOKEN = os.environ["BOT_TOKEN"]
 
 BASE = Path(__file__).parent
 DB = BASE / "stats.db"
-HEADS = BASE / "assets" / "heads.jpg"
-TAILS = BASE / "assets" / "tails.jpg"
+HEADS = BASE / "assets" / "heads.gif"
+TAILS = BASE / "assets" / "tails.gif"
 
 
 def init_db():
@@ -121,13 +121,13 @@ async def do_flip(chat_id, bot):
 
     image = HEADS if side == "heads" else TAILS
 
-    with open(image, "rb") as photo:
-        await bot.send_photo(
-            chat_id=chat_id,
-            photo=photo,
-            caption=stats_text(heads, tails, side),
-            reply_markup=keyboard(),
-        )
+ with open(image, "rb") as animation:
+    await bot.send_animation(
+        chat_id=chat_id,
+        animation=animation,
+        caption=stats_text(heads, tails, side),
+        reply_markup=keyboard(),
+    )
 
 
 async def coin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
