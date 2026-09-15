@@ -15,6 +15,7 @@ TOKEN = os.environ["BOT_TOKEN"]
 
 BASE = Path(__file__).parent
 DB = BASE / "stats.db"
+
 HEADS = BASE / "assets" / "heads.gif"
 TAILS = BASE / "assets" / "tails.gif"
 
@@ -42,7 +43,8 @@ def get_stats(chat_id):
             "SELECT heads, tails FROM stats WHERE chat_id=?",
             (str(chat_id),),
         ).fetchone()
-        return row or (0, 0)
+
+    return row or (0, 0)
 
 
 def add_result(chat_id, side):
@@ -119,9 +121,9 @@ async def do_flip(chat_id, bot):
     side = random.choice(["heads", "tails"])
     heads, tails = add_result(chat_id, side)
 
-    image = HEADS if side == "heads" else TAILS
+    animation_file = HEADS if side == "heads" else TAILS
 
-    with open(image, "rb") as animation:
+    with open(animation_file, "rb") as animation:
         await bot.send_animation(
             chat_id=chat_id,
             animation=animation,
