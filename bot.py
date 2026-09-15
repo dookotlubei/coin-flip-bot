@@ -1,6 +1,7 @@
 import os
 import random
 import sqlite3
+import asyncio
 from pathlib import Path
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -16,8 +17,17 @@ TOKEN = os.environ["BOT_TOKEN"]
 BASE = Path(__file__).parent
 DB = BASE / "stats.db"
 
-HEADS = BASE / "assets" / "heads.gif"
-TAILS = BASE / "assets" / "tails.gif"
+# Видео броска
+HEADS_VIDEO = BASE / "assets" / "heads.mp4"
+TAILS_VIDEO = BASE / "assets" / "tails.mp4"
+
+# Финальные изображения
+HEADS_FINAL = BASE / "assets" / "heads.jpg"
+TAILS_FINAL = BASE / "assets" / "tails.jpg"
+
+# Длительность видео в секундах.
+# Потом выставим точно под наши MP4.
+VIDEO_DURATION = 3.0
 
 
 def init_db():
@@ -36,11 +46,19 @@ def init_db():
 def get_stats(chat_id):
     with sqlite3.connect(DB) as c:
         c.execute(
-            "INSERT OR IGNORE INTO stats(chat_id, heads, tails) VALUES (?, 0, 0)",
+            """
+            INSERT OR IGNORE INTO stats(chat_id, heads, tails)
+            VALUES (?, 0, 0)
+            """,
             (str(chat_id),),
         )
+
         row = c.execute(
-            "SELECT heads, tails FROM stats WHERE chat_id=?",
+            """
+            SELECT heads, tails
+            FROM stats
+            WHERE chat_id=?
+            """,
             (str(chat_id),),
         ).fetchone()
 
@@ -50,18 +68,29 @@ def get_stats(chat_id):
 def add_result(chat_id, side):
     with sqlite3.connect(DB) as c:
         c.execute(
-            "INSERT OR IGNORE INTO stats(chat_id, heads, tails) VALUES (?, 0, 0)",
+            """
+            INSERT OR IGNORE INTO stats(chat_id, heads, tails)
+            VALUES (?, 0, 0)
+            """,
             (str(chat_id),),
         )
 
         if side == "heads":
             c.execute(
-                "UPDATE stats SET heads=heads+1 WHERE chat_id=?",
+                """
+                UPDATE stats
+                SET heads = heads + 1
+                WHERE chat_id=?
+                """,
                 (str(chat_id),),
             )
         else:
             c.execute(
-                "UPDATE stats SET tails=tails+1 WHERE chat_id=?",
+                """
+                UPDATE stats
+                SET tails = tails + 1
+                WHERE chat_id=?
+                """,
                 (str(chat_id),),
             )
 
@@ -71,11 +100,19 @@ def add_result(chat_id, side):
 def reset_stats(chat_id):
     with sqlite3.connect(DB) as c:
         c.execute(
-            "INSERT OR IGNORE INTO stats(chat_id, heads, tails) VALUES (?, 0, 0)",
+            """
+            INSERT OR IGNORE INTO stats(chat_id, heads, tails)
+            VALUES (?, 0, 0)
+            """,
             (str(chat_id),),
         )
+
         c.execute(
-            "UPDATE stats SET heads=0, tails=0 WHERE chat_id=?",
+            """
+            UPDATE stats
+            SET heads=0, tails=0
+            WHERE chat_id=?
+            """,
             (str(chat_id),),
         )
 
@@ -83,8 +120,18 @@ def reset_stats(chat_id):
 def keyboard():
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("🪙 ПОДБРОСИТЬ", callback_data="flip")],
-            [InlineKeyboardButton("🔄 СБРОСИТЬ СЧЁТ", callback_data="reset")],
+            [
+                InlineKeyboardButton(
+                    "🪙 ПОДБРОСИТЬ",
+                    callback_data="flip",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔄 СБРОСИТЬ СЧЁТ",
+                    callback_data="reset",
+                )
+            ],
         ]
     )
 
@@ -109,6 +156,7 @@ def stats_text(heads, tails, result=None):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+
     heads, tails = get_stats(chat_id)
 
     await update.message.reply_text(
@@ -118,26 +166,61 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def do_flip(chat_id, bot):
+    # Случайно выбираем сторону
     side = random.choice(["heads", "tails"])
+
+    # Записываем результат в статистику
     heads, tails = add_result(chat_id, side)
 
-    animation_file = HEADS if side == "heads" else TAILS
+    if side == "heads":
+        video_file = HEADS_VIDEO
+        final_image = HEADS_FINAL
+    else:
+        video_file = TAILS_VIDEO
+        final_image = TAILS_FINAL
 
-    with open(animation_file, "rb") as animation:
-        await bot.send_animation(
+    # Отправляем видео броска монеты
+    with open(video_file, "rb") as video:
+        animation_message = await bot.send_animation(
             chat_id=chat_id,
-            animation=animation,
+            animation=video,
+        )
+
+    # Ждём окончания одного броска
+    await asyncio.sleep(VIDEO_DURATION)
+
+    # Удаляем видео, чтобы оно не продолжало крутиться
+    try:
+        await animation_message.delete()
+    except Exception:
+        pass
+
+    # Показываем окончательный результат
+    with open(final_image, "rb") as photo:
+        await bot.send_photo(
+            chat_id=chat_id,
+            photo=photo,
             caption=stats_text(heads, tails, side),
             reply_markup=keyboard(),
         )
 
 
-async def coin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await do_flip(update.effective_chat.id, context.bot)
+async def coin_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    await do_flip(
+        update.effective_chat.id,
+        context.bot,
+    )
 
 
-async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def reset_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     chat_id = update.effective_chat.id
+
     reset_stats(chat_id)
 
     await update.message.reply_text(
@@ -146,14 +229,21 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def buttons(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     query = update.callback_query
+
     await query.answer()
 
     chat_id = update.effective_chat.id
 
     if query.data == "flip":
-        await do_flip(chat_id, context.bot)
+        await do_flip(
+            chat_id,
+            context.bot,
+        )
 
     elif query.data == "reset":
         reset_stats(chat_id)
@@ -163,12 +253,14 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 caption=stats_text(0, 0),
                 reply_markup=keyboard(),
             )
+
         except Exception:
             try:
                 await query.edit_message_text(
                     text=stats_text(0, 0),
                     reply_markup=keyboard(),
                 )
+
             except Exception:
                 await context.bot.send_message(
                     chat_id=chat_id,
@@ -182,14 +274,41 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("coin", coin_command))
-    app.add_handler(CommandHandler("reset", reset_command))
-    app.add_handler(CallbackQueryHandler(buttons))
+    app.add_handler(
+        CommandHandler(
+            "start",
+            start,
+        )
+    )
 
-    print("BOT STARTED", flush=True)
+    app.add_handler(
+        CommandHandler(
+            "coin",
+            coin_command,
+        )
+    )
 
-    app.run_polling(drop_pending_updates=True)
+    app.add_handler(
+        CommandHandler(
+            "reset",
+            reset_command,
+        )
+    )
+
+    app.add_handler(
+        CallbackQueryHandler(
+            buttons,
+        )
+    )
+
+    print(
+        "BOT STARTED",
+        flush=True,
+    )
+
+    app.run_polling(
+        drop_pending_updates=True,
+    )
 
 
 if __name__ == "__main__":
