@@ -121,13 +121,13 @@ async def do_flip(chat_id, bot):
 
     image = HEADS if side == "heads" else TAILS
 
- with open(image, "rb") as animation:
-    await bot.send_animation(
-        chat_id=chat_id,
-        animation=animation,
-        caption=stats_text(heads, tails, side),
-        reply_markup=keyboard(),
-    )
+    with open(image, "rb") as animation:
+        await bot.send_animation(
+            chat_id=chat_id,
+            animation=animation,
+            caption=stats_text(heads, tails, side),
+            reply_markup=keyboard(),
+        )
 
 
 async def coin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
